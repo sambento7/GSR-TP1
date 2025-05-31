@@ -1,0 +1,72 @@
+@startuml
+class Sensor {
+  - id: str
+  - tipo: str
+  - min_valor: int
+  - max_valor: int
+  - valor_atual: int
+  - last_sampling_time: str
+  + ler_valor(): int
+  + obter_estado(): dict
+}
+
+class Actuator {
+  - id: str
+  - tipo: str
+  - min_valor: int
+  - max_valor: int
+  - estado: int
+  - last_control_time: str
+  + configurar(valor: int): bool
+  + obter_estado(): dict
+}
+
+class LMIBvS {
+  - device_info: dict
+  - sensors: list<Sensor>
+  - actuators: list<Actuator>
+  + get_value(iid: list): any
+  + set_value(iid: list, valor): bool
+}
+
+class ProtocolHandler {
+  + construir_mensagem(tipo, timestamp, msg_id, iids, valores, erros): bytes
+  + parse_mensagem(mensagem: bytes): dict
+  + validar_mensagem(dados: dict): list
+}
+
+class Agent {
+  - porta: int
+  - mib: LMIBvS
+  - protocol: ProtocolHandler
+  - msg_ids: set
+  + escutar()
+  + processar_get(iids: list): tuple
+  + processar_set(iids: list, valores: list): tuple
+}
+
+class Manager {
+  - host: str
+  - porta: int
+  - protocol: ProtocolHandler
+  + enviar_get(iids: list)
+  + enviar_set(iids: list, valores: list)
+}
+
+class TimestampUtils {
+  + gerar_timestamp_data(): str
+  + gerar_timestamp_uptime(inicio: float): str
+}
+
+class IIDUtils {
+  + codificar_iid(iid: list): str
+  + descodificar_iid(data: bytes): list
+}
+
+LMIBvS --> Sensor : usa
+LMIBvS --> Actuator : usa
+Agent --> LMIBvS : usa
+Agent --> ProtocolHandler : usa
+Manager --> ProtocolHandler : usa
+
+@enduml
