@@ -2,11 +2,46 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from utils.timestamp_utils import gerar_timestamp_data
+from utils.timestamp_utils import generate_date_timestamp, generate_uptime_timestamp
 import time
 
+def test_generate_date_timestamp():
+    timestamp = generate_date_timestamp()
+    parts = timestamp.split(":")
+    
+    # Verify number of fields
+    assert len(parts) == 7, "Timestamp should have 7 digits seperated for ':'"
+    
+    # Verify each part is numeric
+    for part in parts:
+        assert part.isdigit(), f"The field '{part}' must be numeric"
+    
+    # Verify ranges of each part
+    day, month, year, hour, minute, second, ms = map(int, parts)
+    assert 1 <= day <= 31
+    assert 1 <= month <= 12
+    assert 0 <= hour <= 23
+    assert 0 <= minute <= 59
+    assert 0 <= second <= 59
+    assert 0 <= ms <= 999
 
-def test_gerar_timestamp_data():
-    data = gerar_timestamp_data()
-    assert isinstance(data, str)
-    assert len(data.split(":")) == 7  # Deve ter 7 campos
+def test_generate_uptime_timestamp_format():
+    start_time = time.time() - 93784.456  # simulates ~1 dia, 2h, 2min, 64s of uptime
+
+    timestamp = generate_uptime_timestamp(start_time)
+    parts = timestamp.split(":")
+
+    # Verify number of fields
+    assert len(parts) == 5, "Timestamp should have 5 digits seperated for':'"
+
+    # Verify each part is numeric
+    for part in parts:
+        assert part.isdigit(), f"The fiield '{part}' must be numeric"
+
+    # Verify ranges of each part
+    days, hours, minutes, seconds, ms = map(int, parts)
+    assert days >= 0
+    assert 0 <= hours <= 23
+    assert 0 <= minutes <= 59
+    assert 0 <= seconds <= 59
+    assert 0 <= ms <= 999
