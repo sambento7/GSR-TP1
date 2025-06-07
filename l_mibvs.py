@@ -58,19 +58,24 @@ class MIB:
         """
         return self.actuators[actuator_id] if actuator_id in self.actuators else None
 
+    #ver se n é melhor retornar valores dos sensores e não os objetos
     def get_all_sensors(self) -> dict:
         """
         Returns all registered sensors.
         :return: Dictionary of all sensors with their IDs as keys.
         """
-        return self.sensors
+        return {
+            sensor_id: sensor.get_state() for sensor_id, sensor in self.sensors.items()
+        }
     
     def get_all_actuators(self) -> dict:    
         """
         Returns all registered actuators.
         :return: Dictionary of all actuators with their IDs as keys.
         """
-        return self.actuators
+        return {
+            actuator_id: actuator.get_state() for actuator_id, actuator in self.actuators.items()
+        }
     
     def get_mib_state(self) -> dict:
         """
@@ -101,14 +106,4 @@ class MIB:
         """
         actuator = self.get_actuator(actuator_id)
         return actuator.get_state() if actuator else None
-    
-    def get_all_devices_states(self) -> dict:
-        """
-        Returns the states of all registered sensors and actuators.
-        :return: Dictionary containing states of all sensors and actuators.
-        """
 
-        return {
-            "sensors": {sensor_id : sensor_state for sensor_id, sensor_state in self.sensors.items()},
-            "actuators": {actuator_id : actuator_state for actuator_id, actuator_state in self.actuators.items()}
-        }
