@@ -1,6 +1,7 @@
 import time
 from devices.sensor import Sensor
 from devices.actuator import Actuator
+from utils.timestamp_utils import generate_date_timestamp, generate_uptime_timestamp
 
 class MIB:
     """
@@ -11,15 +12,28 @@ class MIB:
     Devices can be registered, retrieved, and manipulated via this structure.
 
     Attributes:
-        sensors (dict): Dictionary to hold sensor objects with their IDs as keys.
-        actuators (dict): Dictionary to hold actuator objects with their IDs as keys.
-        start_time (float): Timestamp when the MIB was initialized.
+        sensors (dict): Dictionary of registered sensors, keyed by their IDs.
+        actuators (dict): Dictionary of registered actuators, keyed by their IDs.
+        start_time (float): Time when the MIB was initialized.
+        device_info (dict): Information about the device, including ID, type, beacon rate, date and time, and reset status.
+        last_update_time (str): Last update timestamp of the device information.
+        operational_status (int): Operational status of the MIB (0 = standby, 1 = normal, 2+ = error).
     """
 
     def __init__(self):
-        self.sensors = {}
-        self.actuators = {}
         self.start_time = time.time()
+        self.device_info = {
+            "id": "agent1",  #Tag identifying the device (the MacAddress, for example) -> 1.1
+            "type": "Lights & A/C Conditioning", #"Text description for the type of device -> 1.2
+            "beaconRate": 60,  # "Frequency rate in seconds for issuing a notification message with information from this group that acts as a beacon broadcasting message to all the managers in the LAN. 
+                               # If value is set to zero the notifications for this group are halted. -> 1.3
+            "dateAndTime": generate_date_timestamp(), #System date and time setup in the device. -> 1.6
+            "reset": 0 #Value 0 means no reset and value 1 means a reset procedure must be done. -> 1.10
+        }
+        self.sensors = {} # Dictionary to hold registered sensors, keyed by their IDs -> 1.4
+        self.actuators = {} # Dictionary to hold registered actuators, keyed by their IDs -> 1.5
+        self.last_update_time = generate_date_timestamp() #"Date and time of the last update of any object in the device L-MIBvS. -> 1.8
+        self.operational_status = 1  # 0 = standby, 1 = normal, 2+ = erro -> 1.9
 
     def register_sensor(self, sensor: Sensor):
         """
@@ -106,4 +120,75 @@ class MIB:
         """
         actuator = self.get_actuator(actuator_id)
         return actuator.get_state() if actuator else None
+    
+    def get_device_value(self, field_id: int):
+        """        
+            Retrieves a specific value from the device information based on the field ID.
+            :param field_id: ID of the field to retrieve.
+            :return: Value corresponding to the field ID, or None if the field ID is invalid.
+        """
+
+        if field_id == 1:
+            return self.device_info["id"]
+        elif field_id == 2:
+            return self.device_info["type"]
+        elif field_id == 3:
+            return self.device_info["beaconRate"]
+        elif field_id == 4:
+            return len(self.sensors)
+        elif field_id == 5:
+            return len(self.actuators)
+        elif field_id == 6:
+            return self.device_info["dateAndTime"]
+        elif field_id == 7:
+            return generate_uptime_timestamp(self.start_time)
+        elif field_id == 8:
+            return self.last_update_time
+        elif field_id == 9:
+            return self.operational_status
+        elif field_id == 10:
+            return self.device_info["reset"]
+        else:
+            return None
+
+    def set_device_value(self, field_id: int, value) -> bool:
+
+        updated = False
+
+        if field_id == 3:  # beaconRate
+            try:
+                self.device_info["beaconRate"] = int(value)
+                updated = True
+            except ValueError:
+                return False
+
+        #fazer verificação do tipo (se é data válida)
+        #TODO
+        elif field_id == 6:  # dateAndTime
+            self.device_info["dateAndTime"] = value
+            updated = True
+
+        elif field_id == 10:  # reset
+            if int(value) == 1:
+                self.device_info["reset"] = 1
+                self.start_time = time.time()
+                self.device_info["dateAndTime"] = generate_date_timestamp()
+                self.last_update_time = generate_date_timestamp()
+                
+                # Após executar reset, limpar sinalizador
+                self.device_info["reset"] = 0
+                return True
+            elif int(value) == 0:
+                # Só altera se o valor anterior era 1
+                if self.device_info["reset"] != 0:
+                    self.device_info["reset"] = 0
+                    self.last_update_time = generate_date_timestamp()
+                    return True
+                else:
+                    return False  
+
+        if updated:
+            self.last_update_time = generate_date_timestamp()
+
+        return updated
 
