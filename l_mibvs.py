@@ -2,6 +2,8 @@ import time
 from devices.sensor import Sensor
 from devices.actuator import Actuator
 from utils.timestamp_utils import generate_date_timestamp, generate_uptime_timestamp
+from utils.enums import OperationalResult
+from utils.format_utils import validate_date_format, is_valid_int
 
 class MIB:
     """
@@ -19,6 +21,7 @@ class MIB:
         last_update_time (str): Last update timestamp of the device information.
         operational_status (int): Operational status of the MIB (0 = standby, 1 = normal, 2+ = error).
     """
+
 
     def __init__(self):
         self.start_time = time.time()
@@ -128,67 +131,75 @@ class MIB:
             :return: Value corresponding to the field ID, or None if the field ID is invalid.
         """
 
-        if field_id == 1:
-            return self.device_info["id"]
-        elif field_id == 2:
-            return self.device_info["type"]
-        elif field_id == 3:
-            return self.device_info["beaconRate"]
-        elif field_id == 4:
-            return len(self.sensors)
-        elif field_id == 5:
-            return len(self.actuators)
-        elif field_id == 6:
-            return self.device_info["dateAndTime"]
-        elif field_id == 7:
-            return generate_uptime_timestamp(self.start_time)
-        elif field_id == 8:
-            return self.last_update_time
-        elif field_id == 9:
-            return self.operational_status
-        elif field_id == 10:
-            return self.device_info["reset"]
-        else:
-            return None
+        match field_id:
+            case 1:  return self.device_info["id"]
+            case 2:  return self.device_info["type"]
+            case 3:  return self.device_info["beaconRate"]
+            case 4:  return len(self.sensors)
+            case 5:  return len(self.actuators)
+            case 6:  return self.device_info["dateAndTime"]
+            case 7:  return generate_uptime_timestamp(self.start_time)
+            case 8:  return self.last_update_time
+            case 9:  return self.operational_status
+            case 10: return self.device_info["reset"]
+            case _:  return None
 
-    def set_device_value(self, field_id: int, value) -> bool:
+    def set_device_value(self, field_id: int, value) -> OperationalResult:
+        match field_id:
+            case 3:  # beaconRate
+                if not is_valid_int(value):
+                    return OperationalResult.INVALID
 
-        updated = False
-
-        if field_id == 3:  # beaconRate
-            try:
-                self.device_info["beaconRate"] = int(value)
-                updated = True
-            except ValueError:
-                return False
-
-        #fazer verificação do tipo (se é data válida)
-        #TODO
-        elif field_id == 6:  # dateAndTime
-            self.device_info["dateAndTime"] = value
-            updated = True
-
-        elif field_id == 10:  # reset
-            if int(value) == 1:
-                self.device_info["reset"] = 1
-                self.start_time = time.time()
-                self.device_info["dateAndTime"] = generate_date_timestamp()
-                self.last_update_time = generate_date_timestamp()
-                
-                # Após executar reset, limpar sinalizador
-                self.device_info["reset"] = 0
-                return True
-            elif int(value) == 0:
-                # Só altera se o valor anterior era 1
-                if self.device_info["reset"] != 0:
-                    self.device_info["reset"] = 0
-                    self.last_update_time = generate_date_timestamp()
-                    return True
+                value_int = int(value)
+                if value_int < 0:
+                    return OperationalResult.INVALID
+                elif value_int == self.device_info["beaconRate"]:
+                    return OperationalResult.NO_CHANGE
                 else:
-                    return False  
+                    self.device_info["beaconRate"] = value_int
+                    self.last_update_time = generate_date_timestamp()
+                    return OperationalResult.UPDATED
 
-        if updated:
-            self.last_update_time = generate_date_timestamp()
+            case 6:  # dateAndTime
+                if not validate_date_format(value):
+                    return OperationalResult.INVALID
+                elif value == self.device_info["dateAndTime"]:
+                    return OperationalResult.NO_CHANGE
+                else:
+                    self.device_info["dateAndTime"] = value
+                    self.last_update_time = generate_date_timestamp()
+                    return OperationalResult.UPDATED  
 
-        return updated
+            case 10:  # reset
+                if not is_valid_int(value):
+                    return OperationalResult.INVALID
+
+                value_int = int(value)
+                if value_int == 1:
+                    current_timestamp = time.time()
+                    current_date = generate_date_timestamp(current_timestamp)
+
+                    self.device_info["reset"] = 1
+                    self.start_time = current_timestamp
+                    self.device_info["dateAndTime"] = current_date
+                    self.last_update_time = current_date
+                    self.device_info["reset"] = 0
+                    return OperationalResult.UPDATED
+
+                elif value_int == 0:
+                    if self.device_info["reset"] != 0:
+                        self.device_info["reset"] = 0
+                        self.last_update_time = generate_date_timestamp()
+                        return OperationalResult.UPDATED
+                    else:
+                        return OperationalResult.NO_CHANGE
+
+                else:
+                    return OperationalResult.INVALID
+
+            case _:
+                return OperationalResult.INVALID
+
+
+            
 

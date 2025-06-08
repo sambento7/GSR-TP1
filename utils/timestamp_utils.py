@@ -1,13 +1,17 @@
 from datetime import datetime
 import time
 
-def generate_date_timestamp() -> str:
+def generate_date_timestamp(ts: float = None) -> str:
     '''
-    Generates a timestamp in the format: day:month:year:hour:minute:second:millisecond
+    Generates a timestamp based on the current date and time or a given timestamp.
+    :param ts: Optional; if provided, it should be a timestamp in seconds since the epoch.
+    :return: A formatted string representing the date and time in the format: day:month:year:hour:minute:second:milliseconds
+    '''
+    if ts is None:
+        currentDate = datetime.now()
+    else:
+        currentDate = datetime.fromtimestamp(ts)
 
-    :return: A formatted string representing the current date and time in the specified format.
-    '''
-    currentDate = datetime.now()
 
     # Milliseconds are not directly available in datetime, so we calculate them
     miliseconds = int(currentDate.microsecond/1000)

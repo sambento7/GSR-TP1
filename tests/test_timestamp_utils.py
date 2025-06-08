@@ -25,6 +25,21 @@ def test_generate_date_timestamp():
     assert 0 <= second <= 59
     assert 0 <= ms <= 999
 
+def test_generate_date_timestamp_with_explicit_time():
+    fixed_time = 1717795200.0  # This corresponds to 2024-06-07 00:00:00 UTC
+    timestamp1 = generate_date_timestamp(fixed_time)
+    timestamp2 = generate_date_timestamp(fixed_time)
+
+    
+    assert timestamp1 == timestamp2, "Timestamps generated with the same input time should match"
+
+    
+    parts = timestamp1.split(":")
+    assert len(parts) == 7
+    for part in parts:
+        assert part.isdigit()
+
+
 def test_generate_uptime_timestamp_format():
     start_time = time.time() - 93784.456  # simulates ~1 dia, 2h, 2min, 64s of uptime
 
