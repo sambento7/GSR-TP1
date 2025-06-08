@@ -4,6 +4,7 @@ from devices.actuator import Actuator
 from utils.timestamp_utils import generate_date_timestamp, generate_uptime_timestamp
 from utils.enums import OperationalResult
 from utils.format_utils import validate_date_format, is_valid_int
+from utils.iid_utils import parse_iid
 
 class MIB:
     """
@@ -199,6 +200,37 @@ class MIB:
 
             case _:
                 return OperationalResult.INVALID
+            
+    def get_value_by_iid(self, iid: str):
+
+        try:
+            parsed_iid = parse_iid(iid)
+        except ValueError as e:
+            raise ValueError(f"Invalid IID format: {e}")
+        structure = parsed_iid["structure"]
+        object_id = parsed_iid["object"]
+        indexes = parsed_iid["indexes"]
+        #Device group
+        if structure == 1:
+            if len(indexes) > 0:
+                raise ValueError("Indexes are not allowed for Device group.")
+            elif object_id < 1 or object_id > 10:
+                raise ValueError(f"Invalid object ID {object_id} for Device group. Expected 1–10.")
+            else:
+                return self.get_device_value(object_id)
+        # Sensors group
+        elif structure == 2:
+            if not(0 <= object_id <= 6):
+                raise ValueError(f"Invalid object ID {object_id} for Sensors group. Expected 1–6.")
+            # If object_id is 0, return the count of all sensors
+            elif object_id == 0:
+                return len(self.get_all_sensors())
+            else:
+                
+            
+
+
+            
 
 
             
