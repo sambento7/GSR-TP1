@@ -1,7 +1,9 @@
+from dataclasses import dataclass, field
 import random
 import time
 from utils.timestamp_utils import generate_date_timestamp
 
+@dataclass
 class Sensor:
     '''
     Class that simulates a virtual home automation sensor.
@@ -16,15 +18,14 @@ class Sensor:
         start_time (float): Time when the sensor was initialized.
     '''
 
-    def __init__(self, id: str, type: str, min_value: int, max_value: int):
-        self.id = id 
-        self.type = type 
-        self.min_value = min_value
-        self.max_value = max_value
-        self.current_value = None
-        self.status = None  # Percentagem do intervalo #
-        self.last_sampling_time = None
-        self.start_time = time.time()
+    id: str
+    type: str
+    min_value: int
+    max_value: int
+    current_value: int = field(default=None, init=False)
+    status: float = field(default=None, init=False)
+    last_sampling_time: str = field(default=None, init=False)
+    start_time: float = field(default_factory=time.time, init=False)
 
     def read_value(self) -> int:
         ''' 
@@ -33,12 +34,8 @@ class Sensor:
         :return: The current value read by the sensor.
         '''
         self.current_value = random.randint(self.min_value, self.max_value)
-        # Atualiza o status como percentagem do intervalo
         intervalo = self.max_value - self.min_value
-        if intervalo > 0:
-            self.status = ((self.current_value - self.min_value) / intervalo) * 100
-        else:
-            self.status = 0.0
+        self.status = ((self.current_value - self.min_value) / intervalo) * 100 if intervalo > 0 else 0.0
         self.last_sampling_time = generate_date_timestamp()
         return self.current_value
 

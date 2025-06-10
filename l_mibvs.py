@@ -5,6 +5,7 @@ from utils.timestamp_utils import generate_date_timestamp, generate_uptime_times
 from utils.enums import OperationalResult
 from utils.format_utils import validate_date_format, is_valid_int
 from utils.iid_utils import parse_iid
+from dataclasses import fields
 
 class MIB:
     """
@@ -25,19 +26,24 @@ class MIB:
 
 
     def __init__(self):
-        self.start_time = time.time()
+        self.start_time = time.time()  # usado internamente para uptime
+
         self.device_info = {
-            "id": "agent1",  #Tag identifying the device (the MacAddress, for example) -> 1.1
-            "type": "Lights & A/C Conditioning", #"Text description for the type of device -> 1.2
-            "beaconRate": 60,  # "Frequency rate in seconds for issuing a notification message with information from this group that acts as a beacon broadcasting message to all the managers in the LAN. 
-                               # If value is set to zero the notifications for this group are halted. -> 1.3
-            "dateAndTime": generate_date_timestamp(), #System date and time setup in the device. -> 1.6
-            "reset": 0 #Value 0 means no reset and value 1 means a reset procedure must be done. -> 1.10
+            "id": "agent1",  # 1.1
+            "type": "Lights & A/C Conditioning",  # 1.2
+            "beaconRate": 60,  # 1.3
+            "nSensors": 0,  # 1.4 (será atualizado com len(self.sensors))
+            "nActuators": 0,  # 1.5 (idem)
+            "dateAndTime": generate_date_timestamp(),  # 1.6
+            "upTime": generate_uptime_timestamp(self.start_time),  # 1.7 (atualizado dinamicamente)
+            "lastTimeUpdated": generate_date_timestamp(),  # 1.8
+            "operationalStatus": 1,  # 1.9 (0 = standby, 1 = normal, 2+ = erro)
+            "reset": 0  # 1.10
         }
-        self.sensors = {} # Dictionary to hold registered sensors, keyed by their IDs -> 1.4
-        self.actuators = {} # Dictionary to hold registered actuators, keyed by their IDs -> 1.5
-        self.last_update_time = generate_date_timestamp() #"Date and time of the last update of any object in the device L-MIBvS. -> 1.8
-        self.operational_status = 1  # 0 = standby, 1 = normal, 2+ = erro -> 1.9
+
+        # tabelas de sensores e atuadores (estruturas 2 e 3)
+        self.sensors = {}    # sensor_id: Sensor
+        self.actuators = {}  # actuator_id: Actuator
 
     def register_sensor(self, sensor: Sensor):
         """
@@ -47,6 +53,7 @@ class MIB:
         """
         if sensor.id not in self.sensors:
             self.sensors[sensor.id] = sensor
+            self.device_info["nSensors"] = len(self.sensors)
         else:
             raise ValueError(f"Sensor with ID {sensor.id} already exists.")
         
@@ -57,6 +64,7 @@ class MIB:
         """
         if actuator.id not in self.actuators:
             self.actuators[actuator.id] = actuator
+            self.device_info["nActuators"] = len(self.actuators)
         else:
             raise ValueError(f"Actuator with ID {actuator.id} already exists.")
         
@@ -76,7 +84,6 @@ class MIB:
         """
         return self.actuators[actuator_id] if actuator_id in self.actuators else None
 
-    #ver se n é melhor retornar valores dos sensores e não os objetos
     def get_all_sensors(self) -> dict:
         """
         Returns all registered sensors.
@@ -133,15 +140,19 @@ class MIB:
         """
 
         match field_id:
+            case 0:  return len(self.device_info)
             case 1:  return self.device_info["id"]
             case 2:  return self.device_info["type"]
             case 3:  return self.device_info["beaconRate"]
-            case 4:  return len(self.sensors)
-            case 5:  return len(self.actuators)
+            case 4:  return self.device_info["nSensors"]
+            case 5:  return self.device_info["nActuators"]
             case 6:  return self.device_info["dateAndTime"]
-            case 7:  return generate_uptime_timestamp(self.start_time)
-            case 8:  return self.last_update_time
-            case 9:  return self.operational_status
+            case 7:
+                up_time = generate_uptime_timestamp(self.start_time)
+                self.device_info["upTime"] = up_time  
+                return up_time
+            case 8:  return self.device_info["lastTimeUpdated"]
+            case 9:  return self.device_info["operationalStatus"]
             case 10: return self.device_info["reset"]
             case _:  return None
 
@@ -158,7 +169,7 @@ class MIB:
                     return OperationalResult.NO_CHANGE
                 else:
                     self.device_info["beaconRate"] = value_int
-                    self.last_update_time = generate_date_timestamp()
+                    self.device_info["lastTimeUpdated"]= generate_date_timestamp()
                     return OperationalResult.UPDATED
 
             case 6:  # dateAndTime
@@ -168,7 +179,7 @@ class MIB:
                     return OperationalResult.NO_CHANGE
                 else:
                     self.device_info["dateAndTime"] = value
-                    self.last_update_time = generate_date_timestamp()
+                    self.device_info["lastTimeUpdated"]= generate_date_timestamp()
                     return OperationalResult.UPDATED  
 
             case 10:  # reset
@@ -183,14 +194,14 @@ class MIB:
                     self.device_info["reset"] = 1
                     self.start_time = current_timestamp
                     self.device_info["dateAndTime"] = current_date
-                    self.last_update_time = current_date
+                    self.device_info["lastTimeUpdated"] = current_date
                     self.device_info["reset"] = 0
                     return OperationalResult.UPDATED
 
                 elif value_int == 0:
                     if self.device_info["reset"] != 0:
                         self.device_info["reset"] = 0
-                        self.last_update_time = generate_date_timestamp()
+                        self.device_info["lastTimeUpdated"]= generate_date_timestamp()
                         return OperationalResult.UPDATED
                     else:
                         return OperationalResult.NO_CHANGE
@@ -200,7 +211,20 @@ class MIB:
 
             case _:
                 return OperationalResult.INVALID
-            
+
+    def get_sensor_field(self, object_id: int, index: int):
+        sensors_list = list(self.sensors.values())
+        if len(sensors_list) == 0:
+            raise ValueError("No sensors registered in the MIB.")
+        match object_id:
+            case 1: return sensors_list[index].id
+            case 2: return sensors_list[index].type
+            case 3: return sensors_list[index].status
+            case 4: return sensors_list[index].min_value
+            case 5: return sensors_list[index].max_value
+            case 6: return sensors_list[index].last_sampling_time
+            case _: raise ValueError("Unknown sensor object ID.")
+
     def get_value_by_iid(self, iid: str):
 
         try:
@@ -214,18 +238,41 @@ class MIB:
         if structure == 1:
             if len(indexes) > 0:
                 raise ValueError("Indexes are not allowed for Device group.")
-            elif object_id < 1 or object_id > 10:
-                raise ValueError(f"Invalid object ID {object_id} for Device group. Expected 1–10.")
+            elif object_id < 0 or object_id > len(self.device_info):
+                raise ValueError(f"Invalid object ID {object_id} for Device group. Expected 1–{len(self.device_info)}.")
             else:
                 return self.get_device_value(object_id)
         # Sensors group
         elif structure == 2:
-            if not(0 <= object_id <= 6):
-                raise ValueError(f"Invalid object ID {object_id} for Sensors group. Expected 1–6.")
-            # If object_id is 0, return the count of all sensors
+            if not(0 <= object_id <= len(fields(Sensor))):
+                raise ValueError(f"Invalid object ID {object_id} for Sensors group. Expected 1–{len(fields(Sensor))}.")
             elif object_id == 0:
-                return len(self.get_all_sensors())
+                return len(fields(Sensor))  # Number of fields in Sensor class
             else:
+                if len(indexes) == 0:
+                    return self.get_sensor_field(object_id, 0)
+                elif len(indexes) == 1:
+                    index = indexes[0]
+                    if index == 0:
+                        return len(self.sensors)
+                    elif 1 <= index <= len(self.sensors):
+                        return self.get_sensor_field(object_id, index - 1)
+                    else:
+                        raise ValueError(f"Invalid sensor index {index}. Expected 1–{len(self.sensors)}.")
+                elif len(indexes) == 2:
+                    i1, i2 = indexes
+                    if i1 == 0 and i2 == 0:
+                        # return all sensors values for the given object_id
+                        return [self.get_sensor_field(object_id, i) for i in range(len(self.sensors))]
+                    elif i1 > 0 and i2 >= i1 and i2 <= len(self.sensors):
+                        return [self.get_sensor_field(object_id, i) for i in range(i1 - 1, i2)]
+                    else:
+                        raise ValueError(f"Invalid sensor indexes.")
+                else:
+                    raise ValueError("Invalid number of indexes for Sensors group. Expected 0, 1, or 2 indexes.")
+                   
+            
+                            
                 
             
 

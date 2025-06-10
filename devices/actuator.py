@@ -1,34 +1,25 @@
+from dataclasses import dataclass, field
 import time
 from utils.timestamp_utils import generate_date_timestamp
 
+@dataclass
 class Actuator:
     '''
     Class that simulates a virtual home automation actuator.
     Can be used to control devices with a defined range of values.
-    Attributes:
-        id (str): Unique identifier for the actuator.
-        type (str): Type of the actuator (e.g., light, thermostat).
-        min_value (int): Minimum value the actuator can set.
-        max_value (int): Maximum value the actuator can set.
-        state (bool): Current state of the actuator (on/off).
-        start_time (float): Time when the actuator was initialized.
     '''
-
-    def __init__(self, id: str, type: str, min_value: int, max_value: int):
-        self.id = id
-        self.type = type
-        self.min_value = min_value
-        self.max_value = max_value
-        self.status = 0  # Valor atual do atuador (padrão: desligado)
-        self.last_control_time = None
-        self.start_time = time.time()
+    id: str
+    type: str
+    min_value: int
+    max_value: int
+    status: int = field(default=0, init=False)
+    last_control_time: str = field(default=None, init=False)
+    start_time: float = field(default_factory=time.time, init=False)
 
     def configure_value(self, value: int) -> bool:
         '''
         Sets the actuator to a specific value within its range.
         Updates the state based on the value.
-        :param value: The value to set the actuator to.
-        :return: True if the value is within range, False otherwise.
         '''
         if self.min_value <= value <= self.max_value:
             self.status = value
@@ -39,7 +30,6 @@ class Actuator:
     def get_state(self) -> dict:
         '''
         Returns the current state of the actuator as a dictionary.
-        Includes id, type, range, current staus, last control time and start time.
         '''
         return {
             "id": self.id,
@@ -49,3 +39,4 @@ class Actuator:
             "last_control_time": self.last_control_time,
             "start_time": self.start_time
         }
+

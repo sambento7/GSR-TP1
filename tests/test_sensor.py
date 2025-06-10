@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from devices.sensor import Sensor
 
 def test_read_value_within_range():
-    sensor = Sensor("S1", "temperature", 10, 50)
+    sensor = Sensor(id="S1", type="temperature", min_value=10, max_value=50)
     value = sensor.read_value()
 
     assert sensor.min_value <= value <= sensor.max_value
@@ -18,7 +18,7 @@ def test_read_value_within_range():
     assert 0.0 <= sensor.status <= 100.0
 
 def test_get_state_format():
-    sensor = Sensor("S2", "humidity", 20, 80)
+    sensor = Sensor(id="S2", type="humidity", min_value=20, max_value=80)
     sensor.read_value()
     state = sensor.get_state()
 
