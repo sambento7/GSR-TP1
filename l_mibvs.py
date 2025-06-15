@@ -2,11 +2,10 @@ import time
 from devices.sensor import Sensor
 from devices.actuator import Actuator
 from utils.timestamp_utils import generate_date_timestamp, generate_uptime_timestamp
-from utils.enums import OperationalResult
 from utils.format_utils import validate_date_format, is_valid_int
 from utils.iid_utils import parse_iid
 from dataclasses import fields
-from exceptions import DecodingError, InvalidTagError, UnknownMessageTypeError, DuplicateMessageError, InvalidIIDError, InvalidValueTypeError, UnsupportedValueError, IIDValueMismatchError
+from exceptions import DecodingError, InvalidTagError, UnknownMessageTypeError, DuplicateMessageError, InvalidIIDError, InvalidValueTypeError, UnsupportedValueError, IIDValueMismatchError, NoDevicesRegisteredError
 
 class MIB:
     """
@@ -160,39 +159,39 @@ class MIB:
             case 8:  return self.device_info["lastTimeUpdated"]
             case 9:  return self.device_info["operationalStatus"]
             case 10: return self.device_info["reset"]
-            case _:  return None
+            case _:  raise InvalidIIDError(f"Unknown Device field ID: {field_id}.")
 
     def set_device_value(self, field_id: int, value):
         match field_id:
             case 3:  # beaconRate
                 if not is_valid_int(value):
-                    raise InvalidValueTypeError("beaconRate must be integer.")
-
+                    raise InvalidValueTypeError("Invalid type for beaconRate.")
                 value_int = int(value)
+
                 if value_int < 0:
-                    raise UnsupportedValueError("beaconRate must be a non-negative integer.")
+                    raise UnsupportedValueError("Invalid value for beaconRate.")
 
                 if value_int == self.device_info["beaconRate"]:
-                    return  # Sem alteração o que fazer aqui??? #TODO: pensar em algo melhor
+                    return None # Sem alteração o que fazer aqui??? #TODO: pensar em algo melhor
                 else:
                     self.device_info["beaconRate"] = value_int
                     self.device_info["lastTimeUpdated"] = generate_date_timestamp()
-                    return
+                    return None
 
             case 6:  # dateAndTime
                 if not validate_date_format(value):
-                    raise InvalidValueTypeError("Formato inválido para dateAndTime.")
+                    raise InvalidValueTypeError("Invalid date format.")
 
                 if value == self.device_info["dateAndTime"]:
-                    return  # Sem alteração
+                    return None # Sem alteração
                 else:
                     self.device_info["dateAndTime"] = value
                     self.device_info["lastTimeUpdated"] = generate_date_timestamp()
-                    return
+                    return None
 
             case 10:  # reset
                 if not is_valid_int(value):
-                    raise InvalidValueTypeError("reset deve ser inteiro (0 ou 1).")
+                    raise InvalidValueTypeError("Invalid type for reset.")
 
                 value_int = int(value)
 
@@ -201,29 +200,31 @@ class MIB:
                     current_date = generate_date_timestamp(current_timestamp)
 
                     self.device_info["reset"] = 1
+                    # Resetting the MIB
                     self.start_time = current_timestamp
                     self.device_info["dateAndTime"] = current_date
                     self.device_info["lastTimeUpdated"] = current_date
+                    # after reset is done we put the reset value back to 0
                     self.device_info["reset"] = 0
-                    return
+                    return None
 
                 elif value_int == 0:
                     if self.device_info["reset"] != 0:
                         self.device_info["reset"] = 0
                         self.device_info["lastTimeUpdated"] = generate_date_timestamp()
-                        return
+                        return None
                     else:
-                        return  # Sem alteração
+                        return None # Sem alteração
                 else:
-                    raise UnsupportedValueError("reset deve ser 0 ou 1.")
+                    raise UnsupportedValueError("Invalid value for reset.")
 
             case _:
-                raise InvalidIIDError(f"O campo com field_id={field_id} não é editável.")
+                raise InvalidIIDError(f"Field ID {field_id} is not writable or does not exist in the device information.")
 
     def get_sensor_field(self, object_id: int, index: int):
         sensors_list = list(self.sensors.values())
         if len(sensors_list) == 0:
-            raise ValueError("No sensors registered in the MIB.")
+            raise NoDevicesRegisteredError("No sensors registered in the MIB.")
         match object_id:
             case 1: return sensors_list[index].id
             case 2: return sensors_list[index].type
@@ -231,12 +232,12 @@ class MIB:
             case 4: return sensors_list[index].min_value
             case 5: return sensors_list[index].max_value
             case 6: return sensors_list[index].last_sampling_time
-            case _: raise ValueError("Unknown sensor object ID.")
+            case _: raise InvalidIIDError(f"Unknown sensor object ID: {object_id}.")
 
     def get_actuator_field(self, object_id: int, index: int):
         actuators_list = list(self.actuators.values())
         if len(actuators_list) == 0:
-            raise ValueError("No actuators registered in the MIB.")
+            raise NoDevicesRegisteredError("No actuators registered in the MIB.")
         match object_id:
             case 1: return actuators_list[index].id
             case 2: return actuators_list[index].type
@@ -244,29 +245,27 @@ class MIB:
             case 4: return actuators_list[index].min_value
             case 5: return actuators_list[index].max_value
             case 6: return actuators_list[index].last_control_time
-            case _: raise ValueError("Unknown actuator object ID.")
+            case _: raise InvalidIIDError(f"Unknown actuator object ID: {object_id}.")
 
     def get_value_by_iid(self, iid: str):
 
-        try:
-            parsed_iid = parse_iid(iid)
-        except ValueError as e:
-            raise ValueError(f"Invalid IID format: {e}")
+        parsed_iid = parse_iid(iid)
+
         structure = parsed_iid["structure"]
         object_id = parsed_iid["object"]
         indexes = parsed_iid["indexes"]
         #Device group
         if structure == 1:
             if len(indexes) > 0:
-                raise ValueError("Indexes are not allowed for Device group.")
+                raise InvalidIIDError("Indexes are not allowed for Device group.")
             elif object_id < 0 or object_id > len(self.device_info):
-                raise ValueError(f"Invalid object ID {object_id} for Device group. Expected 1–{len(self.device_info)}.")
+                raise InvalidIIDError(f"Invalid object ID {object_id} for Device group. Expected 1–{len(self.device_info)}.")
             else:
                 return self.get_device_value(object_id)
         # Sensors group
         elif structure == 2:
             if not(0 <= object_id <= len(fields(Sensor))):
-                raise ValueError(f"Invalid object ID {object_id} for Sensors group. Expected 1–{len(fields(Sensor))}.")
+                raise InvalidIIDError(f"Invalid object ID {object_id} for Sensors group. Expected 1–{len(fields(Sensor))}.")
             elif object_id == 0:
                 return len(fields(Sensor))  # Number of fields in Sensor class
             else:
@@ -279,7 +278,7 @@ class MIB:
                     elif 1 <= index <= len(self.sensors):
                         return self.get_sensor_field(object_id, index - 1)
                     else:
-                        raise ValueError(f"Invalid sensor index {index}. Expected 1–{len(self.sensors)}.")
+                        raise InvalidIIDError(f"Invalid sensor index {index}. Expected 1–{len(self.sensors)}.")
                 elif len(indexes) == 2:
                     i1, i2 = indexes
                     if i1 == 0 and i2 == 0:
@@ -288,12 +287,12 @@ class MIB:
                     elif i1 > 0 and i2 >= i1 and i2 <= len(self.sensors):
                         return [self.get_sensor_field(object_id, i) for i in range(i1 - 1, i2)]
                     else:
-                        raise ValueError(f"Invalid sensor indexes.")
+                        raise InvalidIIDError(f"Invalid range for sensor indexes.")
                 else:
-                    raise ValueError("Invalid number of indexes for Sensors group. Expected 0, 1, or 2 indexes.")
+                    raise InvalidIIDError("Invalid number of indexes for Sensors group. Expected 0, 1, or 2 indexes.")
         elif structure == 3:
             if not(0 <= object_id <= len(fields(Actuator))):
-                raise ValueError(f"Invalid object ID {object_id} for Actuators group. Expected 1–{len(fields(Actuator))}.")
+                raise InvalidIIDError(f"Invalid object ID {object_id} for Actuators group. Expected 1–{len(fields(Actuator))}.")
             elif object_id == 0:
                 return len(fields(Actuator))
             else:
@@ -306,7 +305,7 @@ class MIB:
                     elif 1 <= index <= len(self.actuators):
                         return self.get_actuator_field(object_id, index - 1)
                     else:
-                        raise ValueError(f"Invalid actuator index {index}. Expected 1–{len(self.actuators)}.")
+                        raise InvalidIIDError(f"Invalid actuator index {index}. Expected 1–{len(self.actuators)}.")
                 elif len(indexes) == 2:
                     i1, i2 = indexes
                     if i1 == 0 and i2 == 0:
@@ -315,17 +314,14 @@ class MIB:
                     elif i1 > 0 and i2 >= i1 and i2 <= len(self.actuators):
                         return [self.get_actuator_field(object_id, i) for i in range(i1 - 1, i2)]
                     else:
-                        raise ValueError(f"Invalid actuator indexes.")
+                        raise InvalidIIDError(f"Invalid range for actuator indexes.")
                 else:
-                    raise ValueError("Invalid number of indexes for Actuators group. Expected 0, 1, or 2 indexes.")
-    
+                    raise InvalidIIDError("Invalid number of indexes for Actuators group. Expected 0, 1, or 2 indexes.")
 
-    def set_value_by_iid(self, iid: str, value) -> OperationalResult:
-        try:
-            parsed_iid = parse_iid(iid)
-        except ValueError as e:
-            raise ValueError(f"Invalid IID format: {e}")
+    def set_value_by_iid(self, iid: str, value):
         
+        parsed_iid = parse_iid(iid)
+
         structure = parsed_iid["structure"]
         object_id = parsed_iid["object"]
         indexes = parsed_iid["indexes"]
@@ -333,36 +329,42 @@ class MIB:
         # Device group
         if structure == 1:
             if len(indexes) > 0:
-                return OperationalResult.INVALID
+                raise InvalidIIDError("Indexes are not allowed for Device group.")
             elif object_id < 0 or object_id > len(self.device_info):
-                return OperationalResult.INVALID
+                raise InvalidIIDError(f"Invalid object ID {object_id} for Device group. Expected 1–{len(self.device_info)}.")
             else:
-                return self.set_device_value(object_id, value)
+                self.set_device_value(object_id, value)
+                return None
 
         # Sensors group
         elif structure == 2:
-            return OperationalResult.INVALID #all values in Sensors group are read-only
+            raise UnsupportedValueError("Sensors group is read-only. Cannot set values directly.")
 
         # Actuators group
         elif structure == 3:
+            if not(0 <= object_id <= len(fields(Actuator))):
+                raise InvalidIIDError(f"Invalid object ID {object_id} for Actuators group. Expected 1–{len(fields(Actuator))}.")
+            
             if object_id != 3:  # only object_id 3 (status) is writable
-                return OperationalResult.INVALID
+                raise UnsupportedValueError(f"Object ID {object_id} in Actuators group is not writable.")
+            
+            if len(indexes) != 1:
+                raise InvalidIIDError("Invalid number of indexes for Actuators group. Expected 1 index for setting status.")
+            
+            index = indexes[0]
+            index_int = int(index)
+
+            if not is_valid_int(value):
+                raise InvalidValueTypeError("Invalid type for actuator status value.")
+            value_int = int(value)
+
+            if 1 <= index_int <= len(self.actuators):
+                actuator = self.get_actuator(list(self.actuators.keys())[index_int - 1])
+                updated = actuator.configure_value(value_int)
+                if not updated:
+                    raise UnsupportedValueError("Invalid value for actuator status.")
+                self.device_info["lastTimeUpdated"] = generate_date_timestamp()
+                return None
             else:
-                if len(indexes) == 1:
-                    index = indexes[0]
-                    index_int = int(index)
-                    if not is_valid_int(value):
-                        return OperationalResult.INVALID
-                    value_int = int(value)
-                    if 1 <= index_int <= len(self.actuators):
-                        actuator = self.get_actuator(list(self.actuators.keys())[index_int - 1])
-                        updated = actuator.configure_value(value_int)
-                        if updated:
-                            self.device_info["lastTimeUpdated"] = generate_date_timestamp()
-                            return OperationalResult.UPDATED
-                        else:
-                            return OperationalResult.INVALID
-                    else:
-                        return OperationalResult.INVALID
-                else:
-                    return OperationalResult.INVALID
+                raise InvalidIIDError(f"Invalid actuator index {index_int}. Expected 1–{len(self.actuators)}.")
+                

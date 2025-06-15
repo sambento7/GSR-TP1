@@ -33,3 +33,7 @@ class UnsupportedValueError(LSNMPvSError):
 class IIDValueMismatchError(LSNMPvSError):
     """Número de valores não corresponde ao número de IIDs (código 8)."""
     pass
+
+class NoDevicesRegisteredError(LSNMPvSError):
+    """Nenhum sensor ou atuador registado (código 9)."""
+    pass
