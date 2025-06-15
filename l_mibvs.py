@@ -133,6 +133,11 @@ class MIB:
         actuator = self.get_actuator(actuator_id)
         return actuator.get_state() if actuator else None
     
+
+
+
+    
+    
     def get_device_value(self, field_id: int):
         """        
             Retrieves a specific value from the device information based on the field ID.
@@ -157,37 +162,40 @@ class MIB:
             case 10: return self.device_info["reset"]
             case _:  return None
 
-    def set_device_value(self, field_id: int, value) -> OperationalResult:
+    def set_device_value(self, field_id: int, value):
         match field_id:
             case 3:  # beaconRate
                 if not is_valid_int(value):
-                    return OperationalResult.INVALID
+                    raise InvalidValueTypeError("beaconRate must be integer.")
 
                 value_int = int(value)
                 if value_int < 0:
-                    return OperationalResult.INVALID
-                elif value_int == self.device_info["beaconRate"]:
-                    return OperationalResult.NO_CHANGE
+                    raise UnsupportedValueError("beaconRate must be a non-negative integer.")
+
+                if value_int == self.device_info["beaconRate"]:
+                    return  # Sem alteração o que fazer aqui??? #TODO: pensar em algo melhor
                 else:
                     self.device_info["beaconRate"] = value_int
-                    self.device_info["lastTimeUpdated"]= generate_date_timestamp()
-                    return OperationalResult.UPDATED
+                    self.device_info["lastTimeUpdated"] = generate_date_timestamp()
+                    return
 
             case 6:  # dateAndTime
                 if not validate_date_format(value):
-                    return OperationalResult.INVALID
-                elif value == self.device_info["dateAndTime"]:
-                    return OperationalResult.NO_CHANGE
+                    raise InvalidValueTypeError("Formato inválido para dateAndTime.")
+
+                if value == self.device_info["dateAndTime"]:
+                    return  # Sem alteração
                 else:
                     self.device_info["dateAndTime"] = value
-                    self.device_info["lastTimeUpdated"]= generate_date_timestamp()
-                    return OperationalResult.UPDATED  
+                    self.device_info["lastTimeUpdated"] = generate_date_timestamp()
+                    return
 
             case 10:  # reset
                 if not is_valid_int(value):
-                    return OperationalResult.INVALID
+                    raise InvalidValueTypeError("reset deve ser inteiro (0 ou 1).")
 
                 value_int = int(value)
+
                 if value_int == 1:
                     current_timestamp = time.time()
                     current_date = generate_date_timestamp(current_timestamp)
@@ -197,21 +205,20 @@ class MIB:
                     self.device_info["dateAndTime"] = current_date
                     self.device_info["lastTimeUpdated"] = current_date
                     self.device_info["reset"] = 0
-                    return OperationalResult.UPDATED
+                    return
 
                 elif value_int == 0:
                     if self.device_info["reset"] != 0:
                         self.device_info["reset"] = 0
-                        self.device_info["lastTimeUpdated"]= generate_date_timestamp()
-                        return OperationalResult.UPDATED
+                        self.device_info["lastTimeUpdated"] = generate_date_timestamp()
+                        return
                     else:
-                        return OperationalResult.NO_CHANGE
-
+                        return  # Sem alteração
                 else:
-                    return OperationalResult.INVALID
+                    raise UnsupportedValueError("reset deve ser 0 ou 1.")
 
             case _:
-                return OperationalResult.INVALID
+                raise InvalidIIDError(f"O campo com field_id={field_id} não é editável.")
 
     def get_sensor_field(self, object_id: int, index: int):
         sensors_list = list(self.sensors.values())
