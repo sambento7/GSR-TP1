@@ -1,40 +1,42 @@
-class ProtocolHandler:
-    """
-    Responsible for encoding and decoding L-SNMPvS protocol messages.
+class Protocol:
+    TAG = "kdk847ufh84jg87g\0"
 
-    This class does NOT access or modify the MIB.
-    It only translates between Python data structures and protocol strings.
-
-    Methods:
-        decode_message(data: bytes) -> dict
-            Converts raw bytes into a structured message dictionary.
-        
-        encode_message(msg_type: str, payload: dict) -> bytes
-            Converts a message type and a dictionary of data into a bytes object.
-    """
-
-    def __init__(self):
+    def encode_message(self, msg_type: str, timestamp: str, message_id: str,
+                       iid_list: list[list[int]], value_list: list = None, error_list: list[int] = None) -> bytes:
         """
-        Initializes the ProtocolHandler.
-        No attributes are strictly necessary here for now.
+        Codifica uma mensagem L-SNMPvS completa com o formato especificado no enunciado.
         """
-        pass
+        ...
 
-    def decode_message(self, data: bytes) -> dict:
+    def decode_message(self, raw_message: bytes) -> dict:
         """
-        Parses a message received via UDP and returns a structured dictionary.
+        Descodifica uma mensagem L-SNMPvS recebida, validando cada parte da estrutura.
+        """
+        ... 
 
-        :param data: Raw bytes from the network (e.g., b'GET|temp1')
-        :return: Dictionary with operation and parameters (e.g., {'operation': 'GET', 'id': 'temp1'})
-        """
-        pass
+    def encode_iid(self, iid: list[int]) -> bytes:
+        converted_iid_list = []
+        for n in iid:
+            converted_iid_list.append((str(n) + "\0").encode("ascii"))
+        converted_iid = b''.join(converted_iid_list)
+        return converted_iid
 
-    def encode_message(self, msg_type: str, payload: dict) -> bytes:
+    def decode_iid(self, raw: bytes) -> list[int]:
         """
-        Encodes a structured response into the L-SNMPvS byte format for network transmission.
+        Descodifica uma sequência em bytes com inteiros terminados por '\0' para uma lista de ints.
+        """
 
-        :param msg_type: Message type (e.g., 'RESPONSE', 'NOTIFY')
-        :param payload: Dictionary of data to include (e.g., {'status': 'OK', 'value': 22})
-        :return: Encoded bytes (e.g., b'RESPONSE|status=OK;value=22')
+        decoded = raw.decode("ascii")
+        return [int(x) for x in decoded.split('\0') if x]
+
+    def encode_value(self, value) -> bytes:
         """
-        pass
+        Codifica um valor no formato: DataType + Length + Value.
+        """
+        ...
+
+    def decode_value(self, raw: bytes):
+        """
+        Descodifica um valor do formato TLV-like para valor nativo Python.
+        """
+        ...
