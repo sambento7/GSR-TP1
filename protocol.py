@@ -15,6 +15,14 @@ class Protocol:
         ... 
 
     def encode_iid(self, iid: list[int]) -> bytes:
+        """
+        Function to encode a list of integers into a byte sequence,
+        where each integer is followed by a null terminator ('\0').
+        Atributes:
+        - iid: List of integers to be encoded.
+        Returns:
+        - A byte sequence where each integer is represented as a string followed by a null terminator.
+        """
         converted_iid_list = []
         for n in iid:
             converted_iid_list.append((str(n) + "\0").encode("ascii"))
@@ -23,9 +31,13 @@ class Protocol:
 
     def decode_iid(self, raw: bytes) -> list[int]:
         """
-        Descodifica uma sequência em bytes com inteiros terminados por '\0' para uma lista de ints.
+        Function to decode a byte sequence into a list of integers.
+        The byte sequence is expected to be in the format where each integer is represented as a string followed by a null terminator.
+        Atributes:
+        - raw: Byte sequence to be decoded.
+        Returns:
+        - A list of integers decoded from the byte sequence.
         """
-
         decoded = raw.decode("ascii")
         return [int(x) for x in decoded.split('\0') if x]
 

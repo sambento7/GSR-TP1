@@ -46,7 +46,7 @@ def test_decode_non_terminated_iid():
         p.decode_iid(('1\02\03').encode("ascii"))  # Missing termination character
         assert False, "Should raise ValueError"
     except ValueError:
-        pass  # Expected behaviorsim
+        pass  # Expected behavior
     
 
 def test_decode_iid_with_spaces():
