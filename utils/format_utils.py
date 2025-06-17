@@ -23,6 +23,26 @@ def validate_date_format(date_str: str) -> bool:
     except Exception:
         return False
     
+def validate_uptime_format(uptime_str: str) -> bool:
+    """
+    Validates if the uptime string is in the format 'days:hours:minutes:seconds:milliseconds'.
+    Returns True if valid, False otherwise.
+    """
+    try:
+        parts = uptime_str.split(":")
+        if len(parts) != 5:
+            return False
+
+        days, hours, minutes, seconds, milliseconds = map(int, parts)
+
+        if not (0 <= hours < 24 and 0 <= minutes < 60 and 0 <= seconds < 60 and 0 <= milliseconds <= 999):
+            return False
+
+        return True
+    except ValueError:
+        return False
+
+    
 def is_valid_int(value) -> bool:
     """
     Checks if the provided value can be converted to an integer.
