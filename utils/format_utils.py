@@ -39,7 +39,7 @@ def validate_uptime_format(uptime_str: str) -> bool:
             return False
 
         return True
-    except ValueError:
+    except Exception:
         return False
 
     
