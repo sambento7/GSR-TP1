@@ -493,3 +493,40 @@ def test_set_string_with_non_ascii():
         assert False
     except UnicodeDecodeError:
         pass  # Expected, string not ASCII
+
+
+
+
+def test_encode_response_message():
+    p = Protocol()
+    timestamp = "01:12:00:00:000"
+    message_id = "abcdefgh12345678"
+    iid_list = [[1, 2]]
+    value_list = [('I', ['99'])]
+    error_list = []
+
+    encoded = p.encode_message('R', timestamp, message_id, iid_list, value_list, error_list)
+
+    assert isinstance(encoded, bytes)
+    assert encoded.startswith(TAG)
+    assert b'R' in encoded
+    assert b'99\0' in encoded
+    assert b'I\0' in encoded
+
+
+def test_encode_notification_message():
+    p = Protocol()
+    timestamp = "15:08:30:00:500"
+    message_id = "notifmsg00000001"
+    iid_list = [[3, 4]]
+    value_list = [('S', ['OFF'])]
+    error_list = []
+
+    encoded = p.encode_message('N', timestamp, message_id, iid_list, value_list, error_list)
+
+    assert isinstance(encoded, bytes)
+    assert encoded.startswith(TAG)
+    assert b'N' in encoded
+    assert b'OFF\0' in encoded
+    assert b'S\0' in encoded
+
