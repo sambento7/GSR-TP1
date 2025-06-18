@@ -295,6 +295,25 @@ def test_unsupported_error_list_size():
         assert "Error List should be empty" in str(e)
         pass  # Expected behavior
 
+def test_missing_message_id():
+    p = Protocol()
+    msg = TAG + msg_type_get + timestamp + iid_section + value_empty + error_list_empty
+    try:
+        p.decode_message(msg)
+        assert False
+    except DecodingError as e:
+        assert "Invalid message ID length" in str(e)
+
+def test_repeated_terminators():
+    p = Protocol()
+    bad_ts = b"T\0\0" + b"7\0" + b"01\0" * 7
+    msg = TAG + msg_type_get + bad_ts + message_id + iid_section + value_empty + error_list_empty
+    try:
+        p.decode_message(msg)
+        assert False
+    except DecodingError:
+        pass
+
 ######################
 # TESTES PARA GET
 ######################
@@ -326,6 +345,35 @@ def test_get_with_error_list_not_empty():
         assert False
     except DecodingError as e:
         assert "Error List should be empty" in str(e)
+
+def test_get_iid_with_zero_components():
+    p = Protocol()
+    bad_iid = b"1\0" + b"D\0" + b"0\0"
+    msg = TAG + msg_type_get + timestamp + message_id + bad_iid + value_empty + error_list_empty
+    try:
+        p.decode_message(msg)
+        assert False
+    except DecodingError as e:
+        assert "Invalid IID length." in str(e)
+
+def test_get_iid_with_too_many_components():
+    p = Protocol()
+    bad_iid = b"1\0" + b"D\0" + b"5\0" + b"1\0" * 5
+    msg = TAG + msg_type_get + timestamp + message_id + bad_iid + value_empty + error_list_empty
+    try:
+        p.decode_message(msg)
+        assert False
+    except DecodingError as e:
+        assert "Invalid IID length." in str(e)
+
+def test_get_with_extra_trailing_data():
+    p = Protocol()
+    msg = TAG + msg_type_get + timestamp + message_id + iid_section + value_empty + error_list_empty + b"EXTRA\0"
+    try:
+        p.decode_message(msg)
+        assert False
+    except DecodingError as e:
+        assert "Extra data found after expected end of message." in str(e)
 
 ######################
 # TESTES PARA SET
@@ -411,3 +459,37 @@ def test_invalid_value_t_component_value():
     except DecodingError as e:
         assert "Invalid date timestamp format." in str(e)
         pass  # Expected behavior
+
+def test_set_more_values_than_iids():
+    p = Protocol()
+    bad_values = b"2\0" + b"I\0" + b"1\0" + b"42\0" + b"I\0" + b"1\0" + b"43\0"
+    msg = TAG + msg_type_set + timestamp + message_id + iid_section + bad_values + error_list_empty
+    try:
+        p.decode_message(msg)
+        assert False
+    except IIDValueMismatchError as e:
+        assert "Number of values does not match number of IIDs." in str(e)
+
+def test_set_invalid_date_value():
+    p = Protocol()
+    bad_ts = (
+        b"1\0" + b"T\0" + b"7\0" +
+        b"01\0" + b"13\0" + b"2024\0" +
+        b"99\0" + b"00\0" + b"00\0" + b"000\0"
+    )
+    msg = TAG + msg_type_set + timestamp + message_id + iid_section + bad_ts + error_list_empty
+    try:
+        p.decode_message(msg)
+        assert False
+    except DecodingError as e:
+        assert "Invalid date timestamp format." in str(e)
+
+def test_set_string_with_non_ascii():
+    p = Protocol()
+    bad_str = b"1\0" + b"S\0" + b"1\0" + "Olá\0".encode("utf-8")
+    msg = TAG + msg_type_set + timestamp + message_id + iid_section + bad_str + error_list_empty
+    try:
+        p.decode_message(msg)
+        assert False
+    except UnicodeDecodeError:
+        pass  # Expected, string not ASCII
