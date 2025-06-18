@@ -149,11 +149,109 @@ class Protocol:
         }
     
     def encode_message(self, msg_type: str, timestamp: str, message_id: str,
-                       iid_list: list[list[int]], value_list: list = None, error_list: list[int] = None) -> bytes:
-            """
-            Codifica uma mensagem L-SNMPvS completa com o formato especificado no enunciado.
-            """
+                   iid_list: list[list[int]], value_list: list = None, error_list: list[int] = None) -> bytes:
+        """
+        Codifica uma mensagem L-SNMPvS completa com o formato especificado no enunciado.
+        """
+        # Validação do tipo de mensagem
+        if msg_type not in ['G', 'S', 'R', 'N']:
+            raise UnknownMessageTypeError(f"Invalid message type: {msg_type}")
 
+        # Validação do message_id
+        if not isinstance(message_id, str) or len(message_id) != 16:
+            raise DecodingError("Invalid message ID length. Expected 16 characters.")
+
+        # Validação do IID
+        if not isinstance(iid_list, list) or not all(isinstance(iid, list) and all(isinstance(x, int) for x in iid) for iid in iid_list):
+            raise DecodingError("Invalid IID format.")
+        for iid in iid_list:
+            if len(iid) not in [2, 3, 4]:
+                raise DecodingError("Invalid IID length.")
+
+        # Timestamp
+        ts_parts = timestamp.split(":")
+        if msg_type in ['G', 'S'] and len(ts_parts) != 7:
+            raise DecodingError("Invalid timestamp length.")
+        if msg_type in ['R', 'N'] and len(ts_parts) != 5:
+            raise DecodingError("Invalid timestamp length.")
+        ts_bytes = b"T\0" + str(len(ts_parts)).encode("ascii") + b"\0"
+        for part in ts_parts:
+            if not part.isdigit():
+                raise DecodingError("Invalid timestamp component format.")
+            ts_bytes += part.encode("ascii") + b"\0"
+
+        # IID List
+        iid_bytes = str(len(iid_list)).encode("ascii") + b"\0"
+        for iid in iid_list:
+            iid_bytes += b"D\0" + str(len(iid)).encode("ascii") + b"\0"
+            for val in iid:
+                iid_bytes += str(val).encode("ascii") + b"\0"
+
+        # Value List
+        value_bytes = b""
+        if msg_type == 'G':
+            if value_list not in (None, []) or error_list not in (None, []):
+                raise DecodingError("Get request should not contain values.")
+            value_bytes = b"0\0"
+            error_bytes = b"0\0"
+
+        elif msg_type == 'S':
+            if not isinstance(value_list, list) or len(value_list) != len(iid_list):
+                raise IIDValueMismatchError("Number of values does not match number of IIDs.")
+            value_bytes = str(len(value_list)).encode("ascii") + b"\0"
+            for (val_type, val_parts) in value_list:
+                if val_type not in ['I', 'T', 'S']:
+                    raise InvalidValueTypeError(f"Unsupported value type '{val_type}' in value list for message type {msg_type}.")
+                value_bytes += val_type.encode("ascii") + b"\0"
+                value_bytes += str(len(val_parts)).encode("ascii") + b"\0"
+                for part in val_parts:
+                    if val_type in ['I', 'T'] and not str(part).isdigit():
+                        raise DecodingError("Invalid value format.")
+                    value_bytes += str(part).encode("ascii") + b"\0"
+            error_bytes = b"0\0"
+
+        elif msg_type == 'R':
+            if not isinstance(value_list, list) or not isinstance(error_list, list):
+                raise DecodingError("Invalid value or error list for response.")
+            value_bytes = str(len(value_list)).encode("ascii") + b"\0"
+            for (val_type, val_parts) in value_list:
+                if val_type not in ['I', 'T', 'S']:
+                    raise InvalidValueTypeError(f"Unsupported value type '{val_type}' in value list for message type {msg_type}.")
+                value_bytes += val_type.encode("ascii") + b"\0"
+                value_bytes += str(len(val_parts)).encode("ascii") + b"\0"
+                for part in val_parts:
+                    if val_type in ['I', 'T'] and not str(part).isdigit():
+                        raise DecodingError("Invalid value format.")
+                    value_bytes += str(part).encode("ascii") + b"\0"
+            error_bytes = str(len(error_list)).encode("ascii") + b"\0"
+            for err in error_list:
+                error_bytes += str(err).encode("ascii") + b"\0"
+
+        elif msg_type == 'N':
+            value_bytes = str(len(value_list or [])).encode("ascii") + b"\0"
+            if value_list:
+                for (val_type, val_parts) in value_list:
+                    if val_type not in ['I', 'T', 'S']:
+                        raise InvalidValueTypeError(f"Unsupported value type '{val_type}' in value list for message type {msg_type}.")
+                    value_bytes += val_type.encode("ascii") + b"\0"
+                    value_bytes += str(len(val_parts)).encode("ascii") + b"\0"
+                    for part in val_parts:
+                        if val_type in ['I', 'T'] and not str(part).isdigit():
+                            raise DecodingError("Invalid value format.")
+                        value_bytes += str(part).encode("ascii") + b"\0"
+            error_bytes = b"0\0"
+
+        # Montagem final da mensagem
+        full_message = (
+            self.TAG +
+            msg_type.encode("ascii") +
+            ts_bytes +
+            message_id.encode("ascii") + b"\0" +
+            iid_bytes +
+            value_bytes +
+            error_bytes
+        )
+        return full_message
     
     def encode_iid(self, iid: list[int]) -> bytes:
             """
