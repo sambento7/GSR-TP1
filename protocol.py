@@ -1,3 +1,4 @@
+import sys
 from exceptions import LSNMPvSError, DecodingError, InvalidTagError, UnknownMessageTypeError, InvalidValueTypeError, IIDValueMismatchError
 from utils.format_utils import is_valid_int, validate_date_format
 
@@ -24,22 +25,25 @@ class Protocol:
             raise InvalidTagError("Invalid message tag.")
         cursor += len(self.TAG)
 
-        # Message Type
+        # Message Type: agora aceitamos G, S, R, N
         msg_type = raw_message[cursor:cursor + 1].decode("ascii")
-        if msg_type not in ['G', 'S']:
+        if msg_type not in ['G', 'S', 'R', 'N']:
             raise UnknownMessageTypeError(f"Invalid message type: {msg_type}")
         cursor += 1
 
         # Timestamp
-        # Extracting the timestamp type
-        cursor, ts_type_bytes = self._next_str(cursor, raw_message)
-        if ts_type_bytes != b'T':
+        cursor, ts_type = self._next_str(cursor, raw_message)
+        if ts_type != b'T':
             raise DecodingError("Expected timestamp type 'T'.")
-        
-        cursor, ts_len_bytes = self._next_str(cursor, raw_message)
-        if not is_valid_int(ts_len_bytes.decode("ascii")) or ts_len_bytes.decode("ascii") != '7':
+        cursor, ts_len_b = self._next_str(cursor, raw_message)
+        if not is_valid_int(ts_len_b.decode("ascii")):
             raise DecodingError("Invalid timestamp length.")
-        ts_len = int(ts_len_bytes.decode("ascii"))
+        ts_len = int(ts_len_b.decode("ascii"))
+
+        # definir comprimento esperado: 7 para G/S, 5 para R/N
+        expected = 7 if msg_type in ['G','S'] else 5
+        if ts_len != expected:
+            raise DecodingError(f"Invalid timestamp length for message type {msg_type}.")
 
         ts_components = []
         for _ in range(ts_len):
@@ -48,106 +52,115 @@ class Protocol:
                 raise DecodingError("Invalid timestamp component format.")
             ts_components.append(comp.decode("ascii"))
         timestamp = ":".join(ts_components)
-        if not validate_date_format(timestamp):
+
+        # para GET/SET validamos formato date completo, para R/N podemos pular ou validar intervalo
+        if msg_type in ['G','S'] and not validate_date_format(timestamp):
             raise DecodingError("Invalid timestamp format.")
+        # (opcional) poderias validar intervalo R/N também
 
         # Message ID
-        cursor, message_id_bytes = self._next_str(cursor, raw_message)
-        message_id = message_id_bytes.decode("ascii")
+        cursor, mid_b = self._next_str(cursor, raw_message)
+        message_id = mid_b.decode("ascii")
         if len(message_id) != 16:
             raise DecodingError("Invalid message ID length. Expected 16 characters.")
-        #TODO ver no agente que o message_id é único
 
-        # IID List:
-
-        #Number of IIDs present on the list
-        cursor, num_iids_bytes = self._next_str(cursor, raw_message)
-        if not is_valid_int(num_iids_bytes.decode("ascii")):
+        # IID List
+        cursor, n_iids_b = self._next_str(cursor, raw_message)
+        if not is_valid_int(n_iids_b.decode("ascii")):
             raise DecodingError("Invalid IID List length format.")
-        num_iids = int(num_iids_bytes.decode("ascii"))
+        num_iids = int(n_iids_b.decode("ascii"))
 
         iid_list = []
-        # Each IID is a list of integers, starting with a type 'D' followed by its length and components
         for _ in range(num_iids):
-            cursor, iid_type = self._next_str(cursor, raw_message)
-            if iid_type != b'D':
+            cursor, iid_t = self._next_str(cursor, raw_message)
+            if iid_t != b'D':
                 raise DecodingError("Expected IID type 'D'.")
-            
-            cursor, iid_len_bytes = self._next_str(cursor, raw_message)
-            if not is_valid_int(iid_len_bytes.decode("ascii")) or int(iid_len_bytes.decode("ascii")) not in [2,3,4]:
+            cursor, iid_len_b = self._next_str(cursor, raw_message)
+            if not is_valid_int(iid_len_b.decode("ascii")) or int(iid_len_b.decode("ascii")) not in [2,3,4]:
                 raise DecodingError("Invalid IID length.")
-            iid_len = int(iid_len_bytes.decode("ascii"))
- 
+            iid_len = int(iid_len_b.decode("ascii"))
+
             iid = []
             for _ in range(iid_len):
-                cursor, iid_comp = self._next_str(cursor, raw_message)
-                if not is_valid_int(iid_comp.decode("ascii")):
+                cursor, comp = self._next_str(cursor, raw_message)
+                if not is_valid_int(comp.decode("ascii")):
                     raise DecodingError("Invalid IID component format.")
-                iid.append(int(iid_comp.decode("ascii")))
+                iid.append(int(comp.decode("ascii")))
             iid_list.append(iid)
 
-        
-        # Value List:
-        cursor, num_values_bytes = self._next_str(cursor, raw_message)
-        if not is_valid_int(num_values_bytes.decode("ascii")):
+        # Value List
+        cursor, n_values_b = self._next_str(cursor, raw_message)
+        if not is_valid_int(n_values_b.decode("ascii")):
             raise DecodingError("Invalid Value List length format.")
-        num_values = int(num_values_bytes.decode("ascii"))
+        num_values = int(n_values_b.decode("ascii"))
 
-        if msg_type == 'S' and num_values != num_iids:
-            raise IIDValueMismatchError("Number of values does not match number of IIDs.")
+        # regras diferentes para cada tipo
         if msg_type == 'G' and num_values != 0:
             raise DecodingError("Get request should not contain values.")
+        if msg_type == 'S' and num_values != num_iids:
+            raise IIDValueMismatchError("Number of values does not match number of IIDs.")
+        # em R/N não requeremos correspondência, pode haver <>, mas tipicamente equals
 
         value_list = []
         for _ in range(num_values):
-            cursor, raw_val_type = self._next_str(cursor, raw_message)
-            val_type = raw_val_type.decode("ascii")
-            if val_type not in ['I', 'T', 'S']:
-                raise InvalidValueTypeError(f"Unsupported value type '{val_type}' in value list for message type {msg_type}.")
-
-            cursor, len_bytes = self._next_str(cursor, raw_message)
-            if not is_valid_int(len_bytes):
+            cursor, vt_b = self._next_str(cursor, raw_message)
+            val_type = vt_b.decode("ascii")
+            if val_type not in ['I','T','S']:
+                raise InvalidValueTypeError(f"Unsupported value type '{val_type}' for {msg_type} message.")
+            cursor, len_b = self._next_str(cursor, raw_message)
+            if not is_valid_int(len_b):
                 raise DecodingError("Invalid value length format.")
-            length = int(len_bytes.decode("ascii"))
+            length = int(len_b.decode("ascii"))
 
-            if val_type in ['I', 'S'] and length != 1:
+            # validações de comprimento por tipo
+            if val_type in ['I','S'] and length != 1:
                 raise DecodingError(f"Type {val_type} must have length 1.")
-            if val_type == 'T' and length != 7: 
-                raise DecodingError(f"Invalid timestamp length for {msg_type} messages.")
+            if val_type == 'T' and length not in (5,7):
+                raise DecodingError(f"Invalid timestamp length for value in {msg_type} message.")
 
-            value_parts = []
+            parts = []
             for _ in range(length):
-                cursor, val = self._next_str(cursor, raw_message)
-                if (val_type == 'I' or val_type == 'T') and not is_valid_int(val.decode("ascii")):
+                cursor, v = self._next_str(cursor, raw_message)
+                txt = v.decode("ascii")
+                if val_type in ['I','T'] and not is_valid_int(txt):
                     raise DecodingError("Invalid value format.")
-                value_parts.append(val.decode("ascii"))
-
+                parts.append(txt)
             if val_type == 'T':
-                joined_ts = ":".join(value_parts)
-                if not validate_date_format(joined_ts):
+                ts_joined = ":".join(parts)
+                # validamos date-format só se for '7'; se for '5' opcional
+                if length == 7 and not validate_date_format(ts_joined):
                     raise DecodingError("Invalid date timestamp format.")
-            value_list.append((val_type, value_parts))
+            value_list.append((val_type, parts))
 
         # Error List
-        cursor, num_errors_bytes = self._next_str(cursor, raw_message)
-        if not is_valid_int(num_errors_bytes):
+        cursor, n_err_b = self._next_str(cursor, raw_message)
+        if not is_valid_int(n_err_b):
             raise DecodingError("Invalid Error List length format.")
-        num_errors = int(num_errors_bytes.decode("ascii"))
-        if num_errors != 0:
+        num_err = int(n_err_b.decode("ascii"))
+
+        # G/S devem ter zero erros; R/N podem ter >=1
+        if msg_type in ['G','S'] and num_err != 0:
             raise DecodingError(f"Error List should be empty for {msg_type} requests.")
+
+        error_list = []
+        for _ in range(num_err):
+            cursor, eb = self._next_str(cursor, raw_message)
+            if not is_valid_int(eb.decode("ascii")):
+                raise DecodingError("Invalid error code format.")
+            error_list.append(int(eb.decode("ascii")))
 
         if cursor != len(raw_message):
             raise DecodingError("Extra data found after expected end of message.")
 
         return {
-            "type": msg_type,
-            "timestamp": timestamp,
+            "type":       msg_type,
+            "timestamp":  timestamp,
             "message_id": message_id,
-            "iid_list": iid_list,
+            "iid_list":   iid_list,
             "value_list": value_list,
-            "error_list": []
+            "error_list": error_list
         }
-    
+
     def encode_message(self, msg_type: str, timestamp: str, message_id: str,
                    iid_list: list[list[int]], value_list: list = None, error_list: list[int] = None) -> bytes:
         """
@@ -205,12 +218,13 @@ class Protocol:
                 value_bytes += val_type.encode("ascii") + b"\0"
                 value_bytes += str(len(val_parts)).encode("ascii") + b"\0"
                 for part in val_parts:
-                    if val_type in ['I', 'T'] and not str(part).isdigit():
+                    if val_type in ['I', 'T'] and not is_valid_int(part):
                         raise DecodingError("Invalid value format.")
                     value_bytes += str(part).encode("ascii") + b"\0"
             error_bytes = b"0\0"
 
         elif msg_type == 'R':
+            print("value_list", value_list)
             if not isinstance(value_list, list) or not isinstance(error_list, list):
                 raise DecodingError("Invalid value or error list for response.")
             value_bytes = str(len(value_list)).encode("ascii") + b"\0"
@@ -220,7 +234,9 @@ class Protocol:
                 value_bytes += val_type.encode("ascii") + b"\0"
                 value_bytes += str(len(val_parts)).encode("ascii") + b"\0"
                 for part in val_parts:
-                    if val_type in ['I', 'T'] and not str(part).isdigit():
+                    print(f"Part: {part}, Type: {val_type}")
+                    print(f"Is valid int: {is_valid_int(part)}")
+                    if val_type in ['I', 'T'] and not is_valid_int(part):
                         raise DecodingError("Invalid value format.")
                     value_bytes += str(part).encode("ascii") + b"\0"
             error_bytes = str(len(error_list)).encode("ascii") + b"\0"

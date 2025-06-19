@@ -6,6 +6,7 @@ from protocol import Protocol
 from l_mibvs import MIB
 from utils.timestamp_utils import generate_uptime_timestamp
 from exceptions import LSNMPvSError
+from utils.value_type_utils import get_value_type_from_iid
 
 class Agent:
     """
@@ -86,14 +87,37 @@ class Agent:
 
         # Handle GET requests
         if msg_type == 'G':
+            print(f"Received GET request with message_id: {message_id}, iid_list: {iid_list}")
             for iid in iid_list:
                 try:
-                    val = self.mib.get_value_by_iid(iid)
-                    values.append(val)
-                    errors.append(0)  # noError
+                    print("MIB STATUS: ", self.mib.get_mib_state())
+                    raw = self.mib.get_value_by_iid(iid)
+                    print(f"RAW value for IID {iid}: {raw}")
+                    expected = get_value_type_from_iid(iid)
+
+                    # Empacota raw → (val_type, val_parts)
+                    if expected is int:
+                        val_type, val_parts = 'I', [str(raw)]
+                    elif expected is str:
+                        val_type, val_parts = 'S', [raw]
+                    elif expected == "timestamp":
+                        val_type, val_parts = 'T', raw.split(':')
+                    elif expected == "list":
+                        # intervalo/tabela → lista de escalares
+                        first = raw[0]
+                        val_type = 'I' if isinstance(first, int) else 'S'
+                        val_parts = [str(x) for x in raw]
+                    else:
+                        raise LSNMPvSError(f"Tipo não suportado: {expected}")
+
+                    values.append((val_type, val_parts))
+                    errors.append(0)
+
                 except LSNMPvSError as e:
-                    values.append(None)
+                    # fallback: codifica um zero
+                    values.append(('I', ['0']))
                     errors.append(self._map_exception_to_code(e))
+
             return self.protocol.encode_message(
                 msg_type='R',
                 timestamp=generate_uptime_timestamp(self.mib.start_time),
@@ -106,14 +130,17 @@ class Agent:
         # Handle SET requests
         elif msg_type == 'S':
             new_values = decoded.get('value_list', [])
-            for iid, new_val in zip(iid_list, new_values):
+            for iid, (val_type, val_parts) in zip(iid_list, new_values):
+                raw_value = val_parts[0] if val_parts else None
+                print(f"raw_value for IID {iid}: {raw_value}")
                 try:
-                    updated = self.mib.set_value_by_iid(iid, new_val)
-                    values.append(updated)
+                    self.mib.set_value_by_iid(iid, raw_value)
+                    values.append((val_type, val_parts))
                     errors.append(0)
                 except LSNMPvSError as e:
-                    values.append(None)
+                    values.append((val_type, val_parts))
                     errors.append(self._map_exception_to_code(e))
+            print(f"Received SET request with message_id: {message_id}, iid_list: {iid_list}, values: {values}")
             return self.protocol.encode_message(
                 msg_type='R',
                 timestamp=generate_uptime_timestamp(self.mib.start_time),

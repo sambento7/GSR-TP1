@@ -35,7 +35,7 @@ class Sensor:
         '''
         self.current_value = random.randint(self.min_value, self.max_value)
         intervalo = self.max_value - self.min_value
-        self.status = ((self.current_value - self.min_value) / intervalo) * 100 if intervalo > 0 else 0.0
+        self.status = int(((self.current_value - self.min_value) / intervalo) * 100) if intervalo > 0 else 0
         self.last_sampling_time = generate_date_timestamp()
         return self.current_value
 

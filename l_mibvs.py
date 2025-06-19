@@ -223,12 +223,15 @@ class MIB:
 
     def get_sensor_field(self, object_id: int, index: int):
         sensors_list = list(self.sensors.values())
+        print(f"get_sensor_field: object_id={object_id}, index={index}, sensors_list={sensors_list}")
         if len(sensors_list) == 0:
             raise NoDevicesRegisteredError("No sensors registered in the MIB.")
         match object_id:
             case 1: return sensors_list[index].id
             case 2: return sensors_list[index].type
-            case 3: return sensors_list[index].status
+            case 3:
+                sensors_list[index].read_value() 
+                return sensors_list[index].status
             case 4: return sensors_list[index].min_value
             case 5: return sensors_list[index].max_value
             case 6: return sensors_list[index].last_sampling_time
@@ -359,8 +362,10 @@ class MIB:
             value_int = int(value)
 
             if 1 <= index_int <= len(self.actuators):
+                print(f"Setting actuator status for index {index_int} with value {value_int}.")
                 actuator = self.get_actuator(list(self.actuators.keys())[index_int - 1])
                 updated = actuator.configure_value(value_int)
+                print(f"Updated actuator status: {updated}")
                 if not updated:
                     raise UnsupportedValueError("Invalid value for actuator status.")
                 self.device_info["lastTimeUpdated"] = generate_date_timestamp()
