@@ -247,7 +247,7 @@ class MIB:
             case 6: return actuators_list[index].last_control_time
             case _: raise InvalidIIDError(f"Unknown actuator object ID: {object_id}.")
 
-    def get_value_by_iid(self, iid: str):
+    def get_value_by_iid(self, iid: list[int]):
 
         parsed_iid = parse_iid(iid)
 
@@ -318,10 +318,10 @@ class MIB:
                 else:
                     raise InvalidIIDError("Invalid number of indexes for Actuators group. Expected 0, 1, or 2 indexes.")
 
-    def set_value_by_iid(self, iid: str, value):
+    def set_value_by_iid(self, iid: list[int], value):
         
         parsed_iid = parse_iid(iid)
-
+ 
         structure = parsed_iid["structure"]
         object_id = parsed_iid["object"]
         indexes = parsed_iid["indexes"]
